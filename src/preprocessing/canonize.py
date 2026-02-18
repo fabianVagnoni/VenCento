@@ -35,6 +35,16 @@ def canonize(
 ) -> None:
     """
     Canonizes audio files to PCM format (default 16kHz, 1 channel, s16le).
+
+    Args:
+        wav_path: Path to input WAV file
+        pcm_path: Path to output PCM file
+        sr: Sample rate
+        channels: Number of channels
+        sample_fmt: Sample format
+
+    Returns:
+        None
     """
     wav_path = str(Path(wav_path))
     pcm_path = str(Path(pcm_path))
