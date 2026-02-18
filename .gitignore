@@ -7,3 +7,5 @@ scripts/__pycache__/*
 
 urls.json
 urls_full.json
+
+tests.ipynb
