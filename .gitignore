@@ -1,2 +1,9 @@
 data/raw/*
 data/processed/*
+
+
+scripts/raw_extractor.py
+scripts/__pycache__/*
+
+urls.json
+urls_full.json

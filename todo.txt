@@ -1,0 +1,5 @@
+TODO:
+
+A. Preprocessing
+1) Mono Conversion -> mono[t] = 0.5 * (L[t] + R[t])
+2) Resample to 16kHz -> torchaudio.functional.resample
