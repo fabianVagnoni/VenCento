@@ -20,6 +20,7 @@ from src.utils.jsonl_helpers import find_records_by_path
 
 @dataclass(frozen=True)
 class PreprocessParams:
+    raw_manifest_path: str
     raw_data_path: str               # root folder for raw audio files
     processed_data_path: str         # root folder for outputs (pcms + chunks)
     sr: int = 16000
@@ -27,7 +28,6 @@ class PreprocessParams:
     vad_params: VadParams = VadParams()
     sample_fmt: str = "s16le"        # must match canonize(... sample_fmt=...)
     target_dbfs: float = -14.0       # passed to rms_normalize
-    raw_manifest_path: str
 
 
 # -------------------------
@@ -65,15 +65,16 @@ def preprocess_audio(
     
     audio_json = audio_json[0].obj
     audio_speaker = audio_json["speaker_id"]
-    audio_segment = audio_json["segment_id"]
+    audio_segment = audio_json.get("segment_index")
     audio_id = audio_json["id"]
+    if audio_segment is not None:
+        audio_path = f"audio_{audio_id}_{audio_speaker}_segment_{audio_segment}.pcm"
+    else:
+        audio_path = f"audio_{audio_id}_{audio_speaker}.pcm"
 
     processed_root = Path(params.processed_data_path)
     raw_root = Path(params.raw_data_path)
-    if audio_segment:
-        canonical_pcm_path = raw_root / "canonical" / f"audio{audio_id}_speaker{audio_speaker}_segment{audio_segment}.pcm"
-    else:
-        canonical_pcm_path = raw_root / "canonical" / f"audio{audio_id}_speaker{audio_speaker}.pcm"
+    canonical_pcm_path = raw_root / "canonical" / audio_path
 
     canonize(
         wav_path=str(in_path),
@@ -107,7 +108,7 @@ def preprocess_audio(
     )
 
     # ---- (6) Convert segments to PCM chunks + save
-    out_dir = processed_root / "chunks" / in_path.stem
+    out_dir = processed_root / "chunks" / audio_path
     out_dir.mkdir(parents=True, exist_ok=True)
 
     chunk_paths: List[str] = []
@@ -125,7 +126,7 @@ def preprocess_audio(
 
         # Name must be same as original audio path with index of chunk
         # e.g. foo.wav -> foo_000.pcm, foo_001.pcm, ...
-        chunk_path = out_dir / f"{in_path.stem}_{idx:03d}.pcm"
+        chunk_path = out_dir / f"{audio_path}_{idx:03d}.pcm"
         save_pcm_s16le(chunk, str(chunk_path))
         chunk_paths.append(str(chunk_path))
 
@@ -145,6 +146,7 @@ def preprocess_one_file_example():
         vad_params=VadParams(sampling_rate=16000),
         sample_fmt="s16le",
         target_dbfs=-14.0,
+        raw_manifest_path="data/raw/manifest.jsonl",
     )
 
     wav = r"data\raw\youtube__los-tipos-de-acento-maracucho-segun-nandatayo__CxUupicxwhY__seg000__60000ms-180000ms.wav"

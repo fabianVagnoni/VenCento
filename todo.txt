@@ -1,8 +1,7 @@
 TODO:
 
 A. Preprocessing
-1) VAD
-2) chunking
-3) preprocessing orchestrator
-4) make manifest script
+1) clean names + canonical loc
+2) make manifest script
+3) iterate
 
