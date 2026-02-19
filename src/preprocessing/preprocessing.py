@@ -11,6 +11,7 @@ from src.preprocessing.normalize import rms_normalize
 from src.preprocessing.vad_cleaning import VadParams, get_vad_model, vad_clean_audio
 
 from src.utils.io_helpers import load_pcm_s16le, save_pcm_s16le
+from src.utils.jsonl_helpers import find_records_by_path
 
 
 # -------------------------
@@ -26,6 +27,7 @@ class PreprocessParams:
     vad_params: VadParams = VadParams()
     sample_fmt: str = "s16le"        # must match canonize(... sample_fmt=...)
     target_dbfs: float = -14.0       # passed to rms_normalize
+    raw_manifest_path: str
 
 
 # -------------------------
@@ -55,8 +57,23 @@ def preprocess_audio(
 
     # ---- (1) Canonize to raw PCM on disk (s16le, sr, channels)
     # canonize(...) signature comes from your file :contentReference[oaicite:4]{index=4}
+    audio_json = find_records_by_path(params.raw_manifest_path, audio_path, keys="file_path", mode="exact")
+    if audio_json is None:
+        raise ValueError(f"Audio file not found in manifest: {audio_path}")
+    elif len(audio_json) > 1:
+        raise ValueError(f"Multiple audio files found in manifest: {audio_path}")
+    
+    audio_json = audio_json[0].obj
+    audio_speaker = audio_json["speaker_id"]
+    audio_segment = audio_json["segment_id"]
+    audio_id = audio_json["id"]
+
     processed_root = Path(params.processed_data_path)
-    canonical_pcm_path = processed_root / "canonical" / f"{in_path.stem}.pcm"
+    raw_root = Path(params.raw_data_path)
+    if audio_segment:
+        canonical_pcm_path = raw_root / "canonical" / f"audio{audio_id}_speaker{audio_speaker}_segment{audio_segment}.pcm"
+    else:
+        canonical_pcm_path = raw_root / "canonical" / f"audio{audio_id}_speaker{audio_speaker}.pcm"
 
     canonize(
         wav_path=str(in_path),
@@ -115,27 +132,27 @@ def preprocess_audio(
     return chunk_paths
 
 
-# # -------------------------
-# # Example usage (optional)
-# # -------------------------
+# -------------------------
+# Example usage (optional)
+# -------------------------
 
-# def preprocess_one_file_example():
-#     params = PreprocessParams(
-#         raw_data_path="data/raw",
-#         processed_data_path="data/processed",
-#         sr=16000,
-#         channels=1,
-#         vad_params=VadParams(sampling_rate=16000),
-#         sample_fmt="s16le",
-#         target_dbfs=-14.0,
-#     )
+def preprocess_one_file_example():
+    params = PreprocessParams(
+        raw_data_path="data/raw",
+        processed_data_path="data/processed",
+        sr=16000,
+        channels=1,
+        vad_params=VadParams(sampling_rate=16000),
+        sample_fmt="s16le",
+        target_dbfs=-14.0,
+    )
 
-#     wav = r"data\raw\youtube__los-tipos-de-acento-maracucho-segun-nandatayo__CxUupicxwhY__seg000__60000ms-180000ms.wav"
-#     chunk_paths = preprocess_audio(wav, params)
-#     print("Wrote chunks:")
-#     for p in chunk_paths:
-#         print("  ", p)
+    wav = r"data\raw\youtube__los-tipos-de-acento-maracucho-segun-nandatayo__CxUupicxwhY__seg000__60000ms-180000ms.wav"
+    chunk_paths = preprocess_audio(wav, params)
+    print("Wrote chunks:")
+    for p in chunk_paths:
+        print("  ", p)
  
 
-# if __name__ == "__main__":
-#     preprocess_one_file_example()
+if __name__ == "__main__":
+    preprocess_one_file_example()
