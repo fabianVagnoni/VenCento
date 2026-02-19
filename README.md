@@ -286,3 +286,21 @@ Recommended:
 
 ## Repository Layout (Planned)
 
+.
+├── .gitattributes
+├── .gitignore
+├── pyproject.toml
+├── README.md
+├── requirements.txt
+├── todo.txt
+├── data/
+│   ├── raw/
+│   └── processed/
+├── docs/
+├── eval/
+├── models/
+└── src/
+    ├── augmentation/
+    ├── preprocessing/
+    └── utils/
+
