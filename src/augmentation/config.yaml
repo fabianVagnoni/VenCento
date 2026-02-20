@@ -1,0 +1,136 @@
+# -----------------------------
+# 1) Accent QA / Benchmark Model
+# -----------------------------
+accent_encoder:
+  apply_augmentations: "on_the_fly"   # recommended default
+
+  # Applied sequentially; each op has an independent probability.
+  pipeline:
+    - name: "random_crop"
+      p: 1.0
+      params:
+        seconds: ${common_audio.clip_seconds.train_crop_s}
+
+    - name: "gain"
+      p: 0.30
+      params:
+        gain_db_min: -6.0
+        gain_db_max:  6.0
+
+    - name: "speed_perturb"
+      p: 0.30
+      params:
+        factor_min: 0.95
+        factor_max: 1.05
+
+    # WhatsApp/VoIP-like robustness: Opus encode->decode simulation.
+    # Use ffmpeg/libopus or torchaudio codec support (see docs).
+    - name: "codec_opus"
+      p: 0.50
+      params:
+        implementation: "ffmpeg_libopus"   # or "torchaudio"
+        bitrate_kbps_choices: [10, 12, 16, 20, 24]
+        # optional "hard mode" bucket for stress
+        hard_mode:
+          enabled: true
+          p: 0.10
+          bitrate_kbps_choices: [8, 10]
+
+    # Additive noise (street/cafe/babble/music)
+    - name: "additive_noise"
+      p: 0.50
+      params:
+        noise_corpora:
+          - "MUSAN"
+          - "WHAM"
+        snr_db_min: 5.0
+        snr_db_max: 20.0
+        mix_mode: "random_segment"
+
+    # Room impulse response convolution
+    - name: "rir_convolution"
+      p: 0.30
+      params:
+        rir_source: "OpenSLR28"
+        normalize_rir: true
+
+    # Optional packet-loss-like dropouts (VoIP realism)
+    - name: "time_dropout"
+      p: 0.10
+      params:
+        dropout_ms_min: 20
+        dropout_ms_max: 80
+        dropout_count_min: 1
+        dropout_count_max: 3
+        fill: "zeros"
+
+  # Feature-domain augmentation (only if you use log-mel features)
+  feature_aug:
+    enabled: true
+    type: "specaugment"
+    p: 0.50
+    params:
+      time_mask_count: 2
+      time_mask_max_frames: 30
+      freq_mask_count: 2
+      freq_mask_max_bins: 16
+
+  # For evaluation/robustness reports: deterministic grid of degradations
+  eval_degradations:
+    enabled: true
+    grids:
+      opus_bitrate_kbps: [24, 16, 12, 10]
+      snr_db: [20, 10, 5]
+      rir: [false, true]
+
+# -----------------------------
+# 2) Accent Infusion / Conversion
+# -----------------------------
+accent_conversion:
+  # For conversion training, best practice is:
+  # - degrade INPUTS (source + optional Zuliano reference)
+  # - keep TARGETS clean (if you have clean targets) to teach denoising + robustness.
+  apply_augmentations:
+    source_audio: "on_the_fly"
+    reference_accent_audio: "on_the_fly"
+    target_audio: "none"     # keep clean unless you explicitly want channel-matched outputs
+
+  source_pipeline:
+    - name: "random_crop"
+      p: 1.0
+      params:
+        seconds: ${common_audio.clip_seconds.train_crop_s}
+
+    - name: "codec_opus"
+      p: 0.50
+      params:
+        implementation: "ffmpeg_libopus"
+        bitrate_kbps_choices: [10, 12, 16, 20, 24]
+
+    - name: "additive_noise"
+      p: 0.40
+      params:
+        noise_corpora: ["MUSAN", "WHAM"]
+        snr_db_min: 7.0
+        snr_db_max: 25.0
+
+    - name: "rir_convolution"
+      p: 0.25
+      params:
+        rir_source: "OpenSLR28"
+        normalize_rir: true
+
+  reference_pipeline:
+    # Keep reference augmentations slightly lighter to avoid corrupting the accent signal too much
+    - name: "codec_opus"
+      p: 0.30
+      params:
+        implementation: "ffmpeg_libopus"
+        bitrate_kbps_choices: [12, 16, 20, 24]
+
+    - name: "additive_noise"
+      p: 0.25
+      params:
+        noise_corpora: ["MUSAN"]
+        snr_db_min: 10.0
+        snr_db_max: 25.0
