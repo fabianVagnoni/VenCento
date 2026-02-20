@@ -12,7 +12,15 @@ from src.preprocessing.vad_cleaning import VadParams, get_vad_model, vad_clean_a
 
 from src.utils.io_helpers import load_pcm_s16le, save_pcm_s16le
 from src.utils.jsonl_helpers import find_records_by_path
+from src.utils.general_utils import _load_config
 
+CONFIG_PATH = (Path(__file__).parent / "config.yaml").resolve()
+
+_CONFIG = _load_config(CONFIG_PATH)
+if _CONFIG:
+    print(f"preprocessing: Loaded config from {CONFIG_PATH}")
+else:
+    print(f"preprocessing: Warning: Could not load config from {CONFIG_PATH}")
 
 # -------------------------
 # Params
@@ -23,11 +31,11 @@ class PreprocessParams:
     raw_manifest_path: str
     raw_data_path: str               # root folder for raw audio files
     processed_data_path: str         # root folder for outputs (pcms + chunks)
-    sr: int = 16000
-    channels: int = 1
+    sr: int = _CONFIG.get("sampling_rate", 16000)
+    channels: int = _CONFIG.get("channels", 1)
     vad_params: VadParams = VadParams()
     sample_fmt: str = "s16le"        # must match canonize(... sample_fmt=...)
-    target_dbfs: float = -14.0       # passed to rms_normalize
+    target_dbfs: float = _CONFIG.get("target_dbfs", -14.0)       # passed to rms_normalize
 
 
 # -------------------------
@@ -132,29 +140,3 @@ def preprocess_audio(
 
     return chunk_paths
 
-
-# -------------------------
-# Example usage (optional)
-# -------------------------
-
-def preprocess_one_file_example():
-    params = PreprocessParams(
-        raw_data_path="data/raw",
-        processed_data_path="data/processed",
-        sr=16000,
-        channels=1,
-        vad_params=VadParams(sampling_rate=16000),
-        sample_fmt="s16le",
-        target_dbfs=-14.0,
-        raw_manifest_path="data/raw/manifest.jsonl",
-    )
-
-    wav = r"data\raw\youtube__los-tipos-de-acento-maracucho-segun-nandatayo__CxUupicxwhY__seg000__60000ms-180000ms.wav"
-    chunk_paths = preprocess_audio(wav, params)
-    print("Wrote chunks:")
-    for p in chunk_paths:
-        print("  ", p)
- 
-
-if __name__ == "__main__":
-    preprocess_one_file_example()

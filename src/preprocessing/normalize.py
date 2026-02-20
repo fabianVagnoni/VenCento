@@ -3,8 +3,20 @@ Normalize audio to RMS level
 """
 
 import numpy as np
+from pathlib import Path
 
-def rms_normalize(x, target_dbfs=-14.0, eps=1e-12):
+from src.utils.general_utils import _load_config
+
+CONFIG_PATH = (Path(__file__).parent / "config.yaml").resolve()
+
+_CONFIG = _load_config(CONFIG_PATH)
+if _CONFIG:
+    print(f"normalize: Loaded config from {CONFIG_PATH}")
+else:
+    print(f"normalize: Warning: Could not load config from {CONFIG_PATH}")
+_DEFAULT_TARGET_DBFS = _CONFIG.get("target_dbfs", -14.0)
+
+def rms_normalize(x, target_dbfs=_DEFAULT_TARGET_DBFS, eps=1e-12):
     """
     Normalize audio to RMS level
 

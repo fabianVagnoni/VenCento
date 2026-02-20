@@ -21,11 +21,22 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import torch
+from pathlib import Path
 
 from silero_vad import load_silero_vad, get_speech_timestamps
 
 from src.utils.audio_helpers import ensure_mono_float32, numpy_to_torch_1d, slice_audio
+from src.utils.general_utils import _load_config
 
+CONFIG_PATH = (Path(__file__).parent / "config.yaml").resolve()
+
+_CONFIG = _load_config(CONFIG_PATH)
+if _CONFIG:
+    print(f"vad_cleaning: Loaded config from {CONFIG_PATH}")
+    if "max_sec" in _CONFIG:
+         print(f"vad_cleaning: Found max_sec={_CONFIG['max_sec']} in config")
+else:
+    print(f"vad_cleaning: Warning: Could not load config from {CONFIG_PATH}")
 
 # -------------------------
 # Types
@@ -33,14 +44,14 @@ from src.utils.audio_helpers import ensure_mono_float32, numpy_to_torch_1d, slic
 
 @dataclass(frozen=True)
 class VadParams:
-    sampling_rate: int = 16000               # Silero supports 8000 or 16000
-    threshold: float = 0.5                   # 0..1
-    min_speech_sec: float = 0.25             # drop tiny bursts
-    min_sec: float = 2.0                     # final clip min duration
-    max_sec: float = 6.0                     # final clip max duration
-    max_merge_gap_sec: float = 0.10          # merge segments separated by <= this
-    return_seconds: bool = True              # internal convenience
-    padding: float = 0.15
+    sampling_rate: int = _CONFIG.get("sampling_rate", 16000)               # Silero supports 8000 or 16000
+    threshold: float = _CONFIG.get("threshold", 0.5)                   # 0..1
+    min_speech_sec: float = _CONFIG.get("min_speech_sec", 0.25)             # drop tiny bursts
+    min_sec: float = _CONFIG.get("min_sec", 2.0)                     # final clip min duration
+    max_sec: float = _CONFIG.get("max_sec", 6.0)                     # final clip max duration
+    max_merge_gap_sec: float = _CONFIG.get("max_merge_gap_sec", 0.10)          # merge segments separated by <= this
+    return_seconds: bool = _CONFIG.get("return_seconds", True)              # internal convenience
+    padding: float = _CONFIG.get("padding", 0.15)
 
 
 # -------------------------
@@ -227,7 +238,7 @@ def vad_clean_audio(
         min_sec=params.min_sec,
         max_sec=params.max_sec,
         max_merge_gap_sec=params.max_merge_gap_sec,
-        padding=params.padding/params.sampling_rate,
+        padding=params.padding,
         audio_len=audio_len
     )
 

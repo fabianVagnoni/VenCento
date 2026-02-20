@@ -1,0 +1,22 @@
+# General hyperparams
+sampling_rate: 16000
+channels: 1
+
+# Normalizing hyperparam
+target_dbfs: -30.0
+
+# VAD hyperparams
+# Threshold for VAD (0..1)
+threshold: 0.5
+# Minimum speech duration in seconds
+min_speech_sec: 0.25
+# Minimum final clip duration in seconds
+min_sec: 2.0
+# Maximum final clip duration in seconds
+max_sec: 10.0
+# Maximum gap between segments to merge in seconds
+max_merge_gap_sec: 0.10
+# Return seconds instead of samples
+return_seconds: true
+# Padding to add to the audio at the beginning and end (in seconds)
+padding: 0.15

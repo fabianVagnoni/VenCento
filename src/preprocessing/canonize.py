@@ -10,6 +10,19 @@ import argparse
 import subprocess
 from pathlib import Path
 
+from src.utils.general_utils import _load_config
+
+CONFIG_PATH = (Path(__file__).parent / "config.yaml").resolve()
+
+_CONFIG = _load_config(CONFIG_PATH)
+if _CONFIG:
+    print(f"canonize: Loaded config from {CONFIG_PATH}")
+else:
+    print(f"canonize: Warning: Could not load config from {CONFIG_PATH}")
+_DEFAULT_SR = _CONFIG.get("sampling_rate", 16000)
+_DEFAULT_CHANNELS = _CONFIG.get("channels", 1)
+
+
 FFMPEG_BIN = Path(
     r"C:/Users/fabia/AppData/Local/Microsoft/WinGet/Packages/"
     r"Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-8.0.1-full_build/bin"
@@ -29,8 +42,8 @@ def default_output_path(input_path: str) -> str:
 def canonize(
     wav_path: str,
     pcm_path: str,
-    sr: int = 16000,
-    channels: int = 1,
+    sr: int = _DEFAULT_SR,
+    channels: int = _DEFAULT_CHANNELS,
     sample_fmt: str = "s16le",
 ) -> None:
     """
@@ -82,8 +95,8 @@ def main() -> None:
         default=None,
         help="Output raw PCM file (default: data/processed/<input_name>.pcm)",
     )
-    parser.add_argument("--sr", type=int, default=16000, help="Sample rate (default: 16000)")
-    parser.add_argument("--channels", type=int, default=1, help="Channels (default: 1)")
+    parser.add_argument("--sr", type=int, default=_DEFAULT_SR, help=f"Sample rate (default: {_DEFAULT_SR})")
+    parser.add_argument("--channels", type=int, default=_DEFAULT_CHANNELS, help=f"Channels (default: {_DEFAULT_CHANNELS})")
     parser.add_argument("--sample-fmt", default="s16le", help="Sample format (default: s16le)")
     args = parser.parse_args()
 
