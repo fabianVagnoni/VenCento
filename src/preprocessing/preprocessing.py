@@ -140,3 +140,26 @@ def preprocess_audio(
 
     return chunk_paths
 
+
+# -------------------------
+# Example usage (optional)
+# -------------------------
+
+def preprocess_one_file_example():
+    params = PreprocessParams(
+        raw_manifest_path="data/raw/manifest.jsonl",
+        raw_data_path="data/raw",
+        processed_data_path="data/processed",
+    )
+
+    wav = r"data\raw\youtube__los-tipos-de-acento-maracucho-segun-nandatayo__CxUupicxwhY__seg000__60000ms-180000ms.wav"
+    print(f"Starting preprocessing for {wav}")
+    print(f"Params: sr={params.sr}, target_dbfs={params.target_dbfs}, max_sec={params.vad_params.max_sec}")
+    chunk_paths = preprocess_audio(wav, params)
+    print("Wrote chunks:")
+    for p in chunk_paths:
+        print("  ", p)
+ 
+
+if __name__ == "__main__":
+    preprocess_one_file_example()
