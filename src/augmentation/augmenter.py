@@ -19,7 +19,7 @@ def _maybe(p: float) -> bool:
 
 
 def _ensure_1d_or_2d(x: torch.Tensor) -> torch.Tensor:
-    # We will standardize to (T,) or (B,T). Most of your ops support these well.
+    # We will standardize to (T,) or (B,T)
     if x.dim() == 1:
         return x
     if x.dim() == 2:
