@@ -2,6 +2,7 @@
 # 1) Accent QA / Benchmark Model
 # -----------------------------
 accent_encoder:
+  sampling_rate: 16000
   apply_augmentations: "on_the_fly"   # recommended default
 
   # Applied sequentially; each op has an independent probability.
@@ -9,7 +10,7 @@ accent_encoder:
     - name: "random_crop"
       p: 1.0
       params:
-        seconds: ${common_audio.clip_seconds.train_crop_s}
+        seconds: 3
 
     - name: "gain"
       p: 0.30

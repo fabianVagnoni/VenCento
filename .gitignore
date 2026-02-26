@@ -7,6 +7,7 @@ scripts/__pycache__/*
 src/preprocessing/__pycache__/*
 src/training/__pycache__/*
 src/utils/__pycache__/*
+src/augmentation/__pycache__/*
 
 urls.json
 urls_full.json
