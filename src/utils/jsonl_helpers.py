@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 from dataclasses import dataclass
@@ -47,6 +48,58 @@ def iter_jsonl(jsonl_path: Union[str, os.PathLike]) -> Iterable[JSONDict]:
                 yield json.loads(line)
             except json.JSONDecodeError as e:
                 raise ValueError(f"Invalid JSON on line {line_no}: {e}") from e
+
+
+def jsonl_to_csv(
+    jsonl_path: Union[str, os.PathLike],
+    csv_path: Union[str, os.PathLike],
+    *,
+    fieldnames: Optional[List[str]] = None,
+) -> List[str]:
+    """
+    Save a JSONL file as CSV.
+
+    Parameters
+    ----------
+    jsonl_path:
+        Path to the input .jsonl file.
+    csv_path:
+        Path to the output .csv file.
+    fieldnames:
+        Optional explicit list of CSV columns. If omitted, keys are inferred
+        in first-seen order across all JSONL objects.
+
+    Returns
+    -------
+    List[str]:
+        The CSV column names used to write the file.
+    """
+    records = list(iter_jsonl(jsonl_path))
+
+    if fieldnames is None:
+        inferred: List[str] = []
+        seen = set()
+        for obj in records:
+            for key in obj.keys():
+                if key not in seen:
+                    seen.add(key)
+                    inferred.append(key)
+        fieldnames = inferred
+
+    output_dir = Path(csv_path).parent
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=fieldnames,
+            extrasaction="ignore",
+        )
+        writer.writeheader()
+        for obj in records:
+            writer.writerow(obj)
+
+    return fieldnames
 
 
 @dataclass(frozen=True)
