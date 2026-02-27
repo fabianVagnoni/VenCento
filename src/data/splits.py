@@ -204,12 +204,12 @@ def split_stats(split_map: SplitMap) -> Dict[str, Dict[str, object]]:
     """
     totals = {split: len(recs) for split, recs in split_map.items()}
     grand_total = sum(totals.values())
-    total_speakers = len(set([j["speaker_id"] for i in split_map.keys() for j in split_map[i]]))
     return {
         split: {
             "n_chunks": n,
             "fraction": round(n / grand_total, 4) if grand_total else 0.0,
-            "n_speakers": round(len(set([j["speaker_id"] for j in split_map[split]])) / total_speakers, 4) if total_speakers else 0.0,
+            "n_speakers": len(set([j["speaker_id"] for j in split_map[split]])),
+            "n_zuliano_speakers": sum([1 for j in split_map[split] if j["zuliano"]])
         }
         for split, n in totals.items()
     }
