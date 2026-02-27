@@ -9,8 +9,8 @@ import torch.nn as nn
 
 import torchaudio
 
-from basic_operations import random_crop_audio, random_gain_db, speed_perturb
-from codec_opus import codec_opus
+from src.augmentation.basic_operations import random_crop_audio, random_gain_db, speed_perturb
+from src.augmentation.codec_opus import codec_opus
 from src.utils.general_utils import _load_config
 
 
