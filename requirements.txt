@@ -3,3 +3,4 @@ matplotlib
 soundfile
 torchaudio
 silero_vad
+pytest

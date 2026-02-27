@@ -1,6 +1,7 @@
 data/raw/*
 data/processed/*
 data/splits/*
+tmp/*
 
 
 scripts/raw_extractor.py
@@ -10,6 +11,7 @@ src/training/__pycache__/*
 src/utils/__pycache__/*
 src/augmentation/__pycache__/*
 src/data/__pycache__/*
+tests/__pycache__/*
 
 urls.json
 urls_full.json
