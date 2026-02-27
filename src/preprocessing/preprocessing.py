@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+import json
 import os
 
 import numpy as np
@@ -48,7 +49,7 @@ def preprocess_audio(
     params: PreprocessParams,
     *,
     vad_model=None,
-) -> List[str]:
+) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
     Pipeline:
       1) canonize input -> canonical PCM on disk
@@ -58,7 +59,9 @@ def preprocess_audio(
       5) slice segments from normalized audio and save each chunk to disk as PCM
 
     Returns:
-      list of written chunk paths
+      tuple:
+        - list of written chunk paths
+        - list of manifest records, one per written chunk
     """
     in_path = Path(audio_path)
     if not in_path.exists():
@@ -121,6 +124,7 @@ def preprocess_audio(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     chunk_paths: List[str] = []
+    chunk_records: List[Dict[str, Any]] = []
     for idx, (start_s, end_s) in enumerate(clip_ranges):
         # slice in samples
         s0 = int(round(start_s * params.sr))
@@ -138,15 +142,40 @@ def preprocess_audio(
         chunk_path = out_dir / f"{audio_path}_{idx:03d}.pcm"
         save_pcm_s16le(chunk, str(chunk_path))
         chunk_paths.append(str(chunk_path))
+        chunk_record: Dict[str, Any] = {
+            "audio_id": audio_id,
+            "chunk_id": f"{audio_id}_{idx:03d}",
+            "zuliano": audio_json["zuliano"],
+            "speaker_id": audio_speaker,
+            "chunk_path": str(chunk_path),
+        }
 
-    return chunk_paths
+        accent_value = audio_json.get("accent", audio_json.get("accents"))
+        if accent_value not in (None, ""):
+            chunk_record["accent"] = accent_value
+
+        chunk_records.append(chunk_record)
+
+    return chunk_paths, chunk_records
 
 
 def preprocess_all_files(params: PreprocessParams):
+    processed_root = Path(params.processed_data_path)
+    processed_root.mkdir(parents=True, exist_ok=True)
+    manifest_path = processed_root / "manifest.jsonl"
+
     files = [i for i in os.listdir(params.raw_data_path) if i[-4:] == ".wav"]
+    all_chunk_records: List[Dict[str, Any]] = []
     for file in files:
-        preprocess_audio(params.raw_data_path + "/" + file, params)
-        print(f"Preprocessed {file}")
+        _, chunk_records = preprocess_audio(params.raw_data_path + "/" + file, params)
+        all_chunk_records.extend(chunk_records)
+        print(f"Preprocessed {file} ({len(chunk_records)} chunks)")
+
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        for record in all_chunk_records:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    print(f"Wrote manifest with {len(all_chunk_records)} chunks to {manifest_path}")
 
 if __name__ == "__main__":
     params = PreprocessParams(
