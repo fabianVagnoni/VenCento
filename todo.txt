@@ -1,7 +1,1 @@
 TODO:
-
-A. Preprocessing
-1) clean names + canonical loc
-2) make manifest script
-3) iterate
-
