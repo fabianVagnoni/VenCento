@@ -1,5 +1,6 @@
 data/raw/*
 data/processed/*
+data/splits/*
 
 
 scripts/raw_extractor.py
@@ -8,6 +9,7 @@ src/preprocessing/__pycache__/*
 src/training/__pycache__/*
 src/utils/__pycache__/*
 src/augmentation/__pycache__/*
+src/data/__pycache__/*
 
 urls.json
 urls_full.json
