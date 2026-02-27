@@ -25,10 +25,28 @@ Collate output
 --------------
 :class:`Batch` – a frozen dataclass::
 
-    waveforms:   torch.Tensor  # (B, T)  float32
-    labels:      torch.Tensor  # (B,)    int64
-    chunk_ids:   list[str]
-    speaker_ids: list[str]
+    waveforms:      torch.Tensor  # (B, T)  float32
+    attention_mask: torch.Tensor  # (B, T)  int64  – 1 = real, 0 = padding
+    labels:         torch.Tensor  # (B,)    int64
+    chunk_ids:      list[str]
+    speaker_ids:    list[str]
+
+Attention mask
+--------------
+When a waveform is shorter than ``target_samples`` it is right-padded with
+zeros.  The corresponding ``attention_mask`` positions are set to ``0`` so
+that the model ignores them.  For waveforms that were cropped (longer than
+``target_samples``) every position is ``1``.
+
+This convention matches the HuggingFace ``attention_mask`` expected by
+``Wav2Vec2ForSequenceClassification``, ``HubertForSequenceClassification``,
+and the ``WhisperFeatureExtractor`` pipeline::
+
+    outputs = model(
+        input_values   = batch.waveforms,
+        attention_mask = batch.attention_mask,
+        labels         = batch.labels,
+    )
 
 Audio lengths
 -------------
@@ -86,6 +104,10 @@ class Batch:
     ----------
     waveforms:
         Float32 tensor of shape ``(B, T)`` in ``[-1, 1]``.
+    attention_mask:
+        Int64 tensor of shape ``(B, T)``.  ``1`` at every real sample,
+        ``0`` at every zero-padded position.  Pass directly to HuggingFace
+        model ``attention_mask`` argument.
     labels:
         Int64 tensor of shape ``(B,)``.
     chunk_ids:
@@ -94,10 +116,11 @@ class Batch:
         Passthrough speaker tags, one per item.
     """
 
-    waveforms:   torch.Tensor  # (B, T)
-    labels:      torch.Tensor  # (B,)
-    chunk_ids:   List[str]
-    speaker_ids: List[str]
+    waveforms:      torch.Tensor  # (B, T)
+    attention_mask: torch.Tensor  # (B, T)
+    labels:         torch.Tensor  # (B,)
+    chunk_ids:      List[str]
+    speaker_ids:    List[str]
 
 
 # ---------------------------------------------------------------------------
@@ -235,19 +258,35 @@ class CollateFn:
         Returns
         -------
         Batch:
-            ``waveforms`` shape ``(B, T)``, ``labels`` shape ``(B,)``.
+            ``waveforms`` and ``attention_mask`` shape ``(B, T)``,
+            ``labels`` shape ``(B,)``.
         """
+        # Real length of each clip, capped at target (used to build the mask).
+        # Clips longer than target_samples are cropped, so every sample is real.
+        lengths = torch.tensor(
+            [min(s["waveform"].shape[0], self.target_samples) for s in samples],
+            dtype=torch.int64,
+        )                                                           # (B,)
+
         waveforms = torch.stack(
             [_pad_or_crop(s["waveform"], self.target_samples) for s in samples]
         )                                                           # (B, T)
+
+        # Vectorised mask construction: arange (T,) broadcast vs lengths (B,1)
+        attention_mask = (
+            torch.arange(self.target_samples, device=waveforms.device).unsqueeze(0) < lengths.unsqueeze(1)
+        ).to(torch.int64)                                           # (B, T)
+
         labels = torch.tensor(
             [s["label"] for s in samples], dtype=torch.int64
         )                                                           # (B,)
+
         chunk_ids   = [str(s.get("chunk_id",   "")) for s in samples]
         speaker_ids = [str(s.get("speaker_id", "")) for s in samples]
 
         return Batch(
             waveforms=waveforms,
+            attention_mask=attention_mask,
             labels=labels,
             chunk_ids=chunk_ids,
             speaker_ids=speaker_ids,
