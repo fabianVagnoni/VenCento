@@ -45,8 +45,9 @@ def _read_wav_float32(path: str) -> Tuple[torch.Tensor, int]:
             raise RuntimeError("Expected mono int16 WAV from decode step.")
         n_frames = wf.getnframes()
         pcm = wf.readframes(n_frames)
+    pcm = bytearray(pcm)  # writable
     y = torch.frombuffer(pcm, dtype=torch.int16).to(torch.float32) / 32767.0
-    return y.clone(), sr  # clone to detach from underlying buffer
+    return y, sr
 
 
 def codec_opus(
