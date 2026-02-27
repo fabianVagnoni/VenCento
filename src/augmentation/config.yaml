@@ -67,7 +67,7 @@ accent_encoder:
 
   # Feature-domain augmentation (only if you use log-mel features)
   feature_aug:
-    enabled: true
+    enabled: false
     type: "specaugment"
     p: 0.50
     params:
@@ -135,3 +135,4 @@ accent_conversion:
         noise_corpora: ["MUSAN"]
         snr_db_min: 10.0
         snr_db_max: 25.0
+

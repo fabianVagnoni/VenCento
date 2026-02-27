@@ -4,3 +4,5 @@ soundfile
 torchaudio
 silero_vad
 pytest
+transformers
+torch
