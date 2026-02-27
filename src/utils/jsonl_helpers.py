@@ -1,4 +1,19 @@
-"""a"""
+"""
+Generic utilities for reading, writing, and querying JSON Lines (.jsonl) files.
+
+This module is intentionally domain-agnostic: it knows nothing about speakers,
+splits, or manifests. Any file in the project that needs to touch a .jsonl file
+should import from here rather than re-implementing I/O.
+
+Public API
+----------
+    iter_jsonl(path)                   – stream records lazily (generator)
+    load_jsonl(path)                   – load all records into a list
+    write_jsonl(records, path)         – write records to a .jsonl file
+    jsonl_to_csv(jsonl_path, csv_path) – convert a .jsonl to .csv
+    find_records_by_path(...)          – look up records by a path field value
+    find_first_record_by_path(...)     – convenience single-match wrapper
+"""
 
 from __future__ import annotations
 
@@ -7,48 +22,98 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Dict, Iterable, List, Optional, Union
+
+# ---------------------------------------------------------------------------
+# Shared type alias – imported by any module that handles JSONL records
+# ---------------------------------------------------------------------------
+
+JSONDict = Dict[str, object]
 
 
-JSONDict = Dict[str, Any]
+# ---------------------------------------------------------------------------
+# I/O primitives
+# ---------------------------------------------------------------------------
 
-
-def _norm_path(p: Union[str, os.PathLike]) -> str:
+def iter_jsonl(path: Union[str, os.PathLike]) -> Iterable[JSONDict]:
     """
-    Normalize a path for robust matching across Windows/POSIX:
-    - expands ~
-    - resolves/absolutizes (best-effort; file need not exist)
-    - converts backslashes to forward slashes
-    - lowercases on Windows to avoid case-mismatch surprises
+    Lazily stream JSON objects from a .jsonl file (one per non-blank line).
+
+    Prefer this over :func:`load_jsonl` when the file is large and you do not
+    need all records in memory at once.
+
+    Parameters
+    ----------
+    path:
+        Path to the .jsonl file.
+
+    Yields
+    ------
+    JSONDict:
+        Parsed JSON object for each non-blank line.
+
+    Raises
+    ------
+    ValueError:
+        On malformed JSON, with the offending line number.
     """
-    s = os.path.expanduser(os.fspath(p))
-
-    try:
-        s = str(Path(s).resolve(strict=False))
-    except Exception:
-        s = os.path.abspath(s)
-
-    s = s.replace("\\", "/")
-    if os.name == "nt":
-        s = s.lower()
-    return s
-
-
-def iter_jsonl(jsonl_path: Union[str, os.PathLike]) -> Iterable[JSONDict]:
-    """
-    Stream JSON objects from a JSON Lines (.jsonl) file.
-    Raises ValueError with line number on invalid JSON.
-    """
-    with open(jsonl_path, "r", encoding="utf-8") as f:
-        for line_no, line in enumerate(f, start=1):
-            line = line.strip()
-            if not line:
+    with open(path, "r", encoding="utf-8") as fh:
+        for line_no, raw in enumerate(fh, start=1):
+            raw = raw.strip()
+            if not raw:
                 continue
             try:
-                yield json.loads(line)
-            except json.JSONDecodeError as e:
-                raise ValueError(f"Invalid JSON on line {line_no}: {e}") from e
+                yield json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid JSON on line {line_no}: {exc}") from exc
 
+
+def load_jsonl(path: Union[str, os.PathLike]) -> List[JSONDict]:
+    """
+    Load all records from a .jsonl file into a list.
+
+    Thin wrapper around :func:`iter_jsonl` for callers that need random access
+    or need to know the total record count upfront.
+
+    Parameters
+    ----------
+    path:
+        Path to the .jsonl file.
+
+    Returns
+    -------
+    List[JSONDict]:
+        All records in file order.
+    """
+    return list(iter_jsonl(path))
+
+
+def write_jsonl(
+    records: Iterable[JSONDict],
+    path: Union[str, os.PathLike],
+) -> None:
+    """
+    Write an iterable of dicts to a .jsonl file (one JSON object per line).
+
+    Parent directories are created automatically if they do not exist.
+
+    Parameters
+    ----------
+    records:
+        Iterable of dicts to serialise.
+    path:
+        Destination .jsonl file path.
+    """
+    dest = Path(path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with open(dest, "w", encoding="utf-8") as fh:
+        for rec in records:
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+
+# ---------------------------------------------------------------------------
+# CSV conversion
+# ---------------------------------------------------------------------------
 
 def jsonl_to_csv(
     jsonl_path: Union[str, os.PathLike],
@@ -57,44 +122,37 @@ def jsonl_to_csv(
     fieldnames: Optional[List[str]] = None,
 ) -> List[str]:
     """
-    Save a JSONL file as CSV.
+    Convert a .jsonl file to .csv.
 
     Parameters
     ----------
     jsonl_path:
         Path to the input .jsonl file.
     csv_path:
-        Path to the output .csv file.
+        Path to the output .csv file (parent dirs created if absent).
     fieldnames:
-        Optional explicit list of CSV columns. If omitted, keys are inferred
-        in first-seen order across all JSONL objects.
+        Explicit column order. If omitted, columns are inferred from all
+        records in first-seen key order.
 
     Returns
     -------
     List[str]:
-        The CSV column names used to write the file.
+        The column names written to the CSV header.
     """
-    records = list(iter_jsonl(jsonl_path))
+    records = load_jsonl(jsonl_path)
 
     if fieldnames is None:
-        inferred: List[str] = []
-        seen = set()
+        seen: set = set()
+        fieldnames = []
         for obj in records:
-            for key in obj.keys():
+            for key in obj:
                 if key not in seen:
                     seen.add(key)
-                    inferred.append(key)
-        fieldnames = inferred
+                    fieldnames.append(key)
 
-    output_dir = Path(csv_path).parent
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    with open(csv_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(
-            f,
-            fieldnames=fieldnames,
-            extrasaction="ignore",
-        )
+    Path(csv_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(csv_path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         for obj in records:
             writer.writerow(obj)
@@ -102,9 +160,34 @@ def jsonl_to_csv(
     return fieldnames
 
 
+# ---------------------------------------------------------------------------
+# Path-based record lookup
+# ---------------------------------------------------------------------------
+
+def _norm_path(p: Union[str, os.PathLike]) -> str:
+    """
+    Normalise a path for cross-platform comparison.
+
+    - Expands ``~``
+    - Resolves to absolute (best-effort; path need not exist)
+    - Converts backslashes to forward slashes
+    - Lowercases on Windows to avoid case-sensitivity mismatches
+    """
+    s = os.path.expanduser(os.fspath(p))
+    try:
+        s = str(Path(s).resolve(strict=False))
+    except Exception:
+        s = os.path.abspath(s)
+    s = s.replace("\\", "/")
+    if os.name == "nt":
+        s = s.lower()
+    return s
+
+
 @dataclass(frozen=True)
 class Match:
-    """A match result with context."""
+    """A record found by :func:`find_records_by_path`, with source context."""
+
     obj: JSONDict
     line_no: int
     matched_key: str
@@ -119,28 +202,27 @@ def find_records_by_path(
     first_only: bool = False,
 ) -> List[Match]:
     """
-    Find JSON objects in a JSONL file whose path field matches `target_path`.
+    Find records in a .jsonl file whose path field matches *target_path*.
 
     Parameters
     ----------
     jsonl_path:
-        Path to the .jsonl file.
+        Path to the .jsonl file to search.
     target_path:
-        The path you want to match (string or PathLike).
+        The path value to look for.
     keys:
-        JSON key(s) to check. Default "file_path".
-        Example: ["file_path", "source_file_path"]
+        JSON key(s) whose value is treated as a file path.
     mode:
-        - "exact": normalized path equality
-        - "contains": substring match between normalized paths
-        - "basename": match only by filename (basename)
+        ``"exact"``    – normalised equality,
+        ``"contains"`` – substring match between normalised paths,
+        ``"basename"`` – filename-only match.
     first_only:
-        If True, return at most one Match.
+        Return at most one result (short-circuits the search).
 
     Returns
     -------
     List[Match]:
-        Each Match contains (obj, line_no, matched_key).
+        All matching records with their line number and matched key.
     """
     if isinstance(keys, str):
         keys = [keys]
@@ -150,41 +232,36 @@ def find_records_by_path(
 
     t_norm = _norm_path(target_path)
     t_base = Path(os.fspath(target_path)).name
-
     hits: List[Match] = []
 
-    with open(jsonl_path, "r", encoding="utf-8") as f:
-        for line_no, line in enumerate(f, start=1):
-            line = line.strip()
-            if not line:
+    for line_no, raw in enumerate(
+        open(jsonl_path, "r", encoding="utf-8"), start=1
+    ):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            obj: JSONDict = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Invalid JSON on line {line_no}: {exc}") from exc
+
+        for key in keys:
+            val = obj.get(key)
+            if not val:
                 continue
+            rec_path = os.fspath(val)
+            rec_norm = _norm_path(rec_path)
+            rec_base = Path(rec_path).name
 
-            try:
-                obj: JSONDict = json.loads(line)
-            except json.JSONDecodeError as e:
-                raise ValueError(f"Invalid JSON on line {line_no}: {e}") from e
-
-            for key in keys:
-                val = obj.get(key)
-                if not val:
-                    continue
-
-                rec_path = os.fspath(val)
-                rec_norm = _norm_path(rec_path)
-                rec_base = Path(rec_path).name
-
-                ok = False
-                if mode == "exact":
-                    ok = (rec_norm == t_norm)
-                elif mode == "contains":
-                    ok = (t_norm in rec_norm) or (rec_norm in t_norm)
-                elif mode == "basename":
-                    ok = (rec_base == t_base)
-
-                if ok:
-                    hits.append(Match(obj=obj, line_no=line_no, matched_key=key))
-                    if first_only:
-                        return hits
+            matched = (
+                rec_norm == t_norm                              if mode == "exact"    else
+                (t_norm in rec_norm or rec_norm in t_norm)     if mode == "contains" else
+                rec_base == t_base
+            )
+            if matched:
+                hits.append(Match(obj=obj, line_no=line_no, matched_key=key))
+                if first_only:
+                    return hits
 
     return hits
 
@@ -197,13 +274,11 @@ def find_first_record_by_path(
     mode: str = "exact",
 ) -> Optional[Match]:
     """
-    Convenience wrapper returning only the first match (or None).
+    Return the first record matching *target_path*, or ``None``.
+
+    Convenience wrapper around :func:`find_records_by_path`.
     """
-    matches = find_records_by_path(
-        jsonl_path,
-        target_path,
-        keys=keys,
-        mode=mode,
-        first_only=True,
+    hits = find_records_by_path(
+        jsonl_path, target_path, keys=keys, mode=mode, first_only=True
     )
-    return matches[0] if matches else None
+    return hits[0] if hits else None
