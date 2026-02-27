@@ -154,3 +154,116 @@ def test_dataset_is_picklable_and_still_loads(tmp_path):
     assert set(s.keys()) == {"waveform", "label", "chunk_id", "speaker_id"}
     assert s["chunk_id"] == "a_000"
 
+# -----------------------------
+# Error / edge-case tests
+# -----------------------------
+
+def test_getitem_raises_file_not_found_for_missing_pcm(tmp_path):
+    missing = str(tmp_path / "does_not_exist.pcm")
+    records = [_rec(audio_id="x", chunk_id="x_000", zuliano=True, speaker_id="spk", chunk_path=missing)]
+    ds = AudioChunkDataset(records, {"non_zuliano": 0, "zuliano": 1})
+
+    # load_pcm_s16le uses np.fromfile; missing file usually raises FileNotFoundError/OSError
+    with pytest.raises((FileNotFoundError, OSError)):
+        _ = ds[0]
+
+
+def test_getitem_raises_value_error_for_empty_pcm(tmp_path):
+    empty_path = tmp_path / "empty.pcm"
+    empty_path.write_bytes(b"")  # empty file
+
+    records = [_rec(audio_id="e", chunk_id="e_000", zuliano=False, speaker_id="spk", chunk_path=str(empty_path))]
+    ds = AudioChunkDataset(records, {"non_zuliano": 0, "zuliano": 1})
+
+    # io_helpers.load_pcm_s16le raises ValueError on empty PCM
+    with pytest.raises(ValueError):
+        _ = ds[0]
+
+
+def test_getitem_raises_key_error_if_label_missing_in_mapping(tmp_path):
+    pcm = _write_pcm(tmp_path, "a.pcm", np.zeros(10, dtype=np.float32))
+    records = [_rec(audio_id="a", chunk_id="a_000", zuliano=True, speaker_id="s1", chunk_path=pcm)]
+
+    # Missing "zuliano"
+    ds = AudioChunkDataset(records, {"non_zuliano": 0})
+
+    with pytest.raises(KeyError):
+        _ = ds[0]
+
+# -----------------------------
+# from_jsonl constructor tests
+# -----------------------------
+
+def test_from_jsonl_builds_label_to_id_when_none(tmp_path):
+    pcm1 = _write_pcm(tmp_path, "z.pcm", np.zeros(10, dtype=np.float32))
+    pcm2 = _write_pcm(tmp_path, "n.pcm", np.zeros(10, dtype=np.float32))
+
+    records = [
+        _rec(audio_id="a", chunk_id="a_000", zuliano=True,  speaker_id="s1", chunk_path=pcm1),
+        _rec(audio_id="b", chunk_id="b_000", zuliano=False, speaker_id="s2", chunk_path=pcm2),
+    ]
+
+    jsonl_path = tmp_path / "split.jsonl"
+    write_jsonl(records, jsonl_path)
+
+    ds = AudioChunkDataset.from_jsonl(str(jsonl_path), label_to_id=None, validate=False)
+
+    # build_label_to_id sorts labels alphabetically -> non_zuliano then zuliano
+    assert ds.label_to_id == {"non_zuliano": 0, "zuliano": 1}
+    assert len(ds) == 2
+    assert ds[0]["label"] in (0, 1)
+
+
+def test_from_jsonl_uses_provided_label_to_id_without_rebuilding(tmp_path):
+    pcm = _write_pcm(tmp_path, "a.pcm", np.zeros(10, dtype=np.float32))
+
+    records = [
+        _rec(audio_id="a", chunk_id="a_000", zuliano=True, speaker_id="s1", chunk_path=pcm),
+    ]
+    jsonl_path = tmp_path / "split.jsonl"
+    write_jsonl(records, jsonl_path)
+
+    custom_map = {"zuliano": 99, "non_zuliano": 12}
+    ds = AudioChunkDataset.from_jsonl(str(jsonl_path), label_to_id=custom_map, validate=False)
+
+    # Must keep the exact mapping object (important when sharing across splits)
+    assert ds.label_to_id is custom_map
+    assert ds[0]["label"] == 99
+
+
+def test_from_jsonl_validate_true_rejects_missing_required_fields(tmp_path):
+    # Missing chunk_path should be caught by validate_manifest
+    bad_records = [{
+        "audio_id": "a",
+        "chunk_id": "a_000",
+        "zuliano": True,
+        "speaker_id": "s1",
+        # "chunk_path": "..."  # missing
+    }]
+
+    jsonl_path = tmp_path / "bad.jsonl"
+    write_jsonl(bad_records, jsonl_path)
+
+    with pytest.raises(ValueError):
+        _ = AudioChunkDataset.from_jsonl(str(jsonl_path), validate=True)
+
+
+def test_from_jsonl_validate_false_allows_bad_schema_but_getitem_fails_later(tmp_path):
+    # Demonstrates that validate=False skips schema checks.
+    bad_records = [{
+        "audio_id": "a",
+        "chunk_id": "a_000",
+        "zuliano": True,
+        "speaker_id": "s1",
+        # chunk_path missing -> will break inside __getitem__ / load_sample
+    }]
+
+    jsonl_path = tmp_path / "bad.jsonl"
+    write_jsonl(bad_records, jsonl_path)
+
+    ds = AudioChunkDataset.from_jsonl(str(jsonl_path), validate=False)
+
+    # __len__ works, but access fails because required field missing
+    assert len(ds) == 1
+    with pytest.raises(KeyError):
+        _ = ds[0]
