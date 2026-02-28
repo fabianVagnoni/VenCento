@@ -10,6 +10,7 @@ src/utils/__pycache__/*
 src/augmentation/__pycache__/*
 src/data/__pycache__/*
 tests/__pycache__/*
+src/models/backbones/__pycache__/*
 __pycache__/*
 
 urls.json
