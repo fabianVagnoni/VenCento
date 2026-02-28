@@ -164,7 +164,11 @@ def preprocess_all_files(params: PreprocessParams):
     processed_root.mkdir(parents=True, exist_ok=True)
     manifest_path = processed_root / "manifest.jsonl"
 
-    files = [i for i in os.listdir(params.raw_data_path) if i[-4:] == ".wav"]
+    _AUDIO_EXTS = {".wav", ".mp3", ".flac", ".m4a", ".opus"}
+    files = [
+        i for i in os.listdir(params.raw_data_path)
+        if Path(i).suffix.lower() in _AUDIO_EXTS
+    ]
     all_chunk_records: List[Dict[str, Any]] = []
     for file in files:
         _, chunk_records = preprocess_audio(params.raw_data_path + "/" + file, params)
